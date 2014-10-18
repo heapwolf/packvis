@@ -1,0 +1,51 @@
+#!/usr/bin/env node
+var bars = require('bars');
+var bytes = require('bytes');
+var fs = require('fs');
+
+var results = {};
+var dupecount = {};
+
+var walk = function(dir) {
+
+  try {
+    var list = fs.readdirSync(dir);
+  } catch($) {}
+
+  list.forEach(function(file) {
+
+    var path = dir + '/' + file;
+
+    try {
+      var stat = fs.statSync(path)
+    } catch($) {}
+
+    if (stat && stat.isDirectory()) {
+      walk(path);
+    }
+
+    if (stat && file.indexOf('package.json') == 0) {
+      var pkg = JSON.parse(fs.readFileSync(path).toString());
+      if (!pkg.name) return;
+      var count = dupecount[pkg.name] || 1;
+
+      if (results[pkg.name + ' (' + count + ')']) {
+        delete results[pkg.name + ' (' + count + ')'];
+        count++;
+        dupecount[pkg.name] = count;
+        results[pkg.name + ' (' + count + ')'] = stat.size * count;
+      }
+      else {
+        dupecount[pkg.name] = 1;
+        results[pkg.name + ' (1)'] = stat.size;
+      }
+    }
+ });
+
+ return results;
+}
+
+var options = { bar: '=', width: 80, sort: true, map: bytes };
+
+console.log(bars(walk(process.argv[2] || process.cwd()), options));
+

@@ -1,0 +1,15 @@
+{
+  "name": "packvis",
+  "version": "1.0.0",
+  "description": "package visualizer",
+  "bin": "./packvis",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "hij1nx",
+  "license": "MIT",
+  "dependencies": {
+    "bars": "git://github.com/jstrace/bars",
+    "bytes": "^1.0.0"
+  }
+}

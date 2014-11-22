@@ -2,15 +2,26 @@
 var bars = require('bars');
 var bytes = require('bytes');
 var fs = require('fs');
+var pathutil = require('path');
 
-var results = {};
-var dupecount = {};
+var tree = {};
+var agg = {};
+var flat = {};
+var dupes = {};
+var total = 0;
 
-var walk = function(dir) {
+function walk(dir, obj) {
+
+  obj = obj || tree;
 
   try {
     var list = fs.readdirSync(dir);
   } catch($) {}
+
+  if (!list) {
+    console.log('No files');
+    return;
+  }
 
   list.forEach(function(file) {
 
@@ -18,34 +29,75 @@ var walk = function(dir) {
 
     try {
       var stat = fs.statSync(path)
-    } catch($) {}
+    } catch($) { return; }
 
-    if (stat && stat.isDirectory()) {
-      walk(path);
+    if (/\.git/.test(file)) return;
+
+    var size = 512 * stat.blocks;
+    total += size;
+
+    if (stat.isFile()) {
+      if (file == 'package.json') {
+        var pkg = require(path);
+        obj[':version'] = pkg.version;
+        obj[':name'] = pkg.name;
+      }
+      obj[':files'].push({ name: path, size: size });
+    }
+    else {
+      obj[file] = {};
+      obj[file][':files'] = [];
+      obj[file][':size'] = size;
+      walk(path, obj[file]);
     }
 
-    if (stat && file.indexOf('package.json') == 0) {
-      var pkg = JSON.parse(fs.readFileSync(path).toString());
-      if (!pkg.name) return;
-      var count = dupecount[pkg.name] || 1;
-
-      if (results[pkg.name + ' (' + count + ')']) {
-        delete results[pkg.name + ' (' + count + ')'];
-        count++;
-        dupecount[pkg.name] = count;
-        results[pkg.name + ' (' + count + ')'] = stat.size * count;
-      }
-      else {
-        dupecount[pkg.name] = 1;
-        results[pkg.name + ' (1)'] = stat.size;
-      }
-    }
- });
-
- return results;
+  });
 }
+
+function prune(obj, pkg) {
+
+  for (var k in obj) {
+    var version = obj[k][':version'];
+    var name = obj[k][':name'];
+
+    if (version && name) {
+      pkg = name + ' ' + version;
+      if (agg[pkg]) {
+        dupes[pkg] = (dupes[pkg]++) || 1;
+        pkg = name + ' [dupe #' + dupes[pkg] + '] ' + version;
+      }
+    }
+
+    if (pkg && !agg[pkg]) {
+      agg[pkg] = { size: obj[k][':size'] };
+    }
+
+    if (obj[k][':files']) {
+      agg[pkg] && obj[k][':files'].map(function(file) {
+        agg[pkg].size += file.size;
+      });
+    }
+
+    if (({}).toString.call(obj[k]) == '[object Object]') {
+      prune(obj[k], pkg);
+    }
+  }
+}
+
+function flatten(obj) {
+  for (var k in obj) {
+    flat[k] = obj[k].size;
+  }
+}
+
+var dir = pathutil.join((process.argv[2] || process.cwd()), '/node_modules');
+
+walk(dir);
+prune(tree);
+flatten(agg);
 
 var options = { bar: '=', width: 80, sort: true, map: bytes };
 
-console.log(bars(walk(process.argv[2] || process.cwd()), options));
+console.log(bars(flat, options));
+console.log('>>> Total size: %s\n', bytes(total));
 
